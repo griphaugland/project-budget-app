@@ -9,6 +9,26 @@ import type {
   CreditCardTransfer,
 } from "@/types/sparebank1";
 
+// Raw SpareBank1 API response types
+interface RawSpareBank1Account {
+  key: string;
+  accountNumber: string;
+  iban: string;
+  name: string;
+  description: string;
+  balance: number;
+  availableBalance: number;
+  currencyCode: string;
+  owner: Record<string, unknown>;
+  productType: string;
+  type: string;
+  productId: string;
+  descriptionCode: string;
+  disposalRole: boolean;
+  isDefault?: boolean;
+  accountProperties: Record<string, unknown>;
+}
+
 export class SpareBank1SimpleClient {
   private client: AxiosInstance;
   private accessToken: string;
@@ -113,15 +133,17 @@ export class SpareBank1SimpleClient {
           console.log(
             "✅ Response has accounts array, returning accounts property"
           );
-          return response.data.accounts.map((account: any) => ({
-            accountKey: account.key,
-            name: account.name,
-            type: account.type || account.description,
+          return response.data.accounts.map((account: unknown) => ({
+            accountKey: (account as RawSpareBank1Account).key,
+            name: (account as RawSpareBank1Account).name,
+            type:
+              (account as RawSpareBank1Account).type ||
+              (account as RawSpareBank1Account).description,
             balance: {
-              amount: account.balance || 0,
-              currency: account.currencyCode || "NOK",
+              amount: (account as RawSpareBank1Account).balance || 0,
+              currency: (account as RawSpareBank1Account).currencyCode || "NOK",
             },
-            isDefault: account.isDefault || false,
+            isDefault: (account as RawSpareBank1Account).isDefault || false,
           }));
         } else {
           console.warn("⚠️ Unexpected response structure:", response.data);
@@ -152,16 +174,18 @@ export class SpareBank1SimpleClient {
           response.data.accounts &&
           Array.isArray(response.data.accounts)
         ) {
-          return response.data.accounts.map((account: any) => ({
-            accountKey: account.key,
-            name: account.name,
-            type: account.type || account.description,
-            balance: {
-              amount: account.balance || 0,
-              currency: account.currencyCode || "NOK",
-            },
-            isDefault: account.isDefault || false,
-          }));
+          return response.data.accounts.map(
+            (account: RawSpareBank1Account) => ({
+              accountKey: account.key,
+              name: account.name,
+              type: account.type || account.description,
+              balance: {
+                amount: account.balance || 0,
+                currency: account.currencyCode || "NOK",
+              },
+              isDefault: account.isDefault || false,
+            })
+          );
         }
 
         return response.data || [];
@@ -393,9 +417,9 @@ export class SpareBank1SimpleClient {
   }
 }
 
-// Factory function to create authenticated client
-export function createSpareBank1SimpleClient(): SpareBank1SimpleClient | null {
-  const accessToken = getValidAccessToken();
+// Factory function to create authenticated client with auto-refresh
+export async function createSpareBank1SimpleClient(): Promise<SpareBank1SimpleClient | null> {
+  const accessToken = await getValidAccessToken();
 
   if (!accessToken) {
     console.warn("No valid SpareBank1 access token available");

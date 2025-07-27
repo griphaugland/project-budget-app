@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { SpareBank1TokenAuth } from "@/components/SpareBank1TokenAuth";
-import { getValidAccessToken } from "@/lib/auth-simple";
+import { SpareBank1OAuthSetup } from "@/components/SpareBank1OAuthSetup";
+import { getValidAccessTokenSync } from "@/lib/auth-simple";
 
 interface TestResult {
   success: boolean;
@@ -53,9 +53,8 @@ export default function Home() {
     }
   };
 
-  console.log(accounts);
   const testSpareBank1Connectivity = async () => {
-    const accessToken = getValidAccessToken();
+    const accessToken = getValidAccessTokenSync();
 
     if (!accessToken) {
       setError("No valid access token available");
@@ -99,7 +98,7 @@ export default function Home() {
   };
 
   const syncAccounts = async () => {
-    const accessToken = getValidAccessToken();
+    const accessToken = getValidAccessTokenSync();
 
     if (!accessToken) {
       setError("No valid access token available");
@@ -156,7 +155,7 @@ export default function Home() {
         {/* Content */}
         <div className="py-8 space-y-8">
           {/* Authentication Section */}
-          <SpareBank1TokenAuth onAuthChange={handleAuthChange} />
+          <SpareBank1OAuthSetup onAuthChange={handleAuthChange} />
 
           {/* API Test Section - only show if authenticated */}
           {isAuthenticated && (
