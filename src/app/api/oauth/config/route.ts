@@ -7,7 +7,7 @@ export async function GET() {
     console.log("🔍 Checking SpareBank1 OAuth configuration...");
 
     // Check if OAuth configuration is complete
-    const config = getSpareBank1OAuthConfig();
+    const config = await getSpareBank1OAuthConfig();
 
     // Generate a sample authorization URL
     const sampleAuthUrl = generateAuthorizationUrl({

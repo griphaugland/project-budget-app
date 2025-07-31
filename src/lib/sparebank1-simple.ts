@@ -32,6 +32,8 @@ interface RawSpareBank1Account {
 export class SpareBank1SimpleClient {
   private client: AxiosInstance;
   private accessToken: string;
+  private lastRequestTime: number = 0;
+  private minRequestInterval: number = 3000; // 3 seconds between requests (more conservative)
 
   constructor(accessToken: string) {
     this.accessToken = accessToken;
@@ -75,6 +77,25 @@ export class SpareBank1SimpleClient {
           message: error.message,
         });
 
+        // Handle rate limiting (429 errors)
+        if (error.response?.status === 429) {
+          const retryAfter = error.response.headers["retry-after"];
+          const rateLimitRemaining =
+            error.response.headers["x-ratelimit-remaining"];
+          console.error("🚨 Rate Limited (429):", {
+            retryAfter,
+            rateLimitRemaining,
+            message: "Too many requests - API rate limit exceeded",
+            suggestion: "Wait 30-60 minutes before trying again",
+          });
+
+          // Add rate limit info to error for handling upstream
+          error.isRateLimit = true;
+          error.retryAfter = retryAfter;
+          error.rateLimitMessage =
+            "SpareBank1 API rate limit exceeded. Please wait 30-60 minutes before retrying.";
+        }
+
         // Log the full error response for 406 errors
         if (error.response?.status === 406) {
           console.error("406 Error - Full Response:", error.response);
@@ -85,9 +106,21 @@ export class SpareBank1SimpleClient {
       }
     );
 
-    // Add request interceptor to log outgoing requests
+    // Add request interceptor to log outgoing requests and handle rate limiting
     this.client.interceptors.request.use(
-      (config) => {
+      async (config) => {
+        // Rate limiting: ensure minimum interval between requests
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastRequestTime;
+
+        if (timeSinceLastRequest < this.minRequestInterval) {
+          const delay = this.minRequestInterval - timeSinceLastRequest;
+          console.log(`⏳ Rate limiting: waiting ${delay}ms before API call`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+
+        this.lastRequestTime = Date.now();
+
         console.log("SpareBank1 API Request:", {
           method: config.method?.toUpperCase(),
           url: config.url,
@@ -101,6 +134,15 @@ export class SpareBank1SimpleClient {
         return Promise.reject(error);
       }
     );
+  }
+
+  // Rate limiting helper method
+  private async waitForRateLimit(retryAfter?: number): Promise<void> {
+    const delay = retryAfter ? retryAfter * 1000 : 5000; // Default 5 seconds
+    console.log(
+      `🛑 Rate limited - waiting ${delay / 1000} seconds before retry`
+    );
+    await new Promise((resolve) => setTimeout(resolve, delay));
   }
 
   // Account Methods
@@ -189,8 +231,11 @@ export class SpareBank1SimpleClient {
         }
 
         return response.data || [];
-      } catch (error2) {
-        console.error("getAccounts failed with alternative headers too");
+      } catch (fallbackError) {
+        console.error(
+          "getAccounts failed with alternative headers too:",
+          fallbackError
+        );
         throw error; // Throw the original error
       }
     }
@@ -277,18 +322,80 @@ export class SpareBank1SimpleClient {
   }): Promise<Transaction[]> {
     console.log("🔄 Making getTransactions API call with params:", params);
 
-    const response = await this.client.get("/transactions", {
-      params,
-      headers: {
-        Accept: "application/json",
-      },
-    });
+    try {
+      const response = await this.client.get("/transactions", {
+        params,
+        headers: {
+          Accept: "application/json",
+        },
+      });
 
-    console.log(
-      "📦 Raw SpareBank1 getTransactions response:",
-      JSON.stringify(response.data, null, 2)
-    );
-    return response.data;
+      console.log(
+        "📦 Raw SpareBank1 getTransactions response:",
+        JSON.stringify(response.data, null, 2)
+      );
+
+      // Handle different response structures
+      if (response.data && Array.isArray(response.data)) {
+        return response.data;
+      } else if (
+        response.data &&
+        response.data.transactions &&
+        Array.isArray(response.data.transactions)
+      ) {
+        return response.data.transactions;
+      } else if (
+        response.data &&
+        response.data.data &&
+        Array.isArray(response.data.data)
+      ) {
+        return response.data.data;
+      }
+
+      return response.data || [];
+    } catch (error) {
+      console.error("getTransactions failed, trying alternative headers...");
+
+      // Try with different Accept header (same pattern as accounts)
+      try {
+        const response = await this.client.get("/transactions", {
+          params,
+          headers: {
+            Accept: "*/*",
+          },
+        });
+
+        console.log(
+          "📦 Alternative headers getTransactions response:",
+          JSON.stringify(response.data, null, 2)
+        );
+
+        // Handle different response structures for fallback
+        if (response.data && Array.isArray(response.data)) {
+          return response.data;
+        } else if (
+          response.data &&
+          response.data.transactions &&
+          Array.isArray(response.data.transactions)
+        ) {
+          return response.data.transactions;
+        } else if (
+          response.data &&
+          response.data.data &&
+          Array.isArray(response.data.data)
+        ) {
+          return response.data.data;
+        }
+
+        return response.data || [];
+      } catch (fallbackError) {
+        console.error(
+          "getTransactions failed with alternative headers too:",
+          fallbackError
+        );
+        throw error; // Throw the original error
+      }
+    }
   }
 
   async getClassifiedTransactions(params?: {

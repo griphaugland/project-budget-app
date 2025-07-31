@@ -53,42 +53,38 @@ export function SpareBank1OAuthSetup({
     if (typeof window === "undefined") return;
 
     const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get("code");
-    const state = urlParams.get("state");
 
-    if (code && state) {
-      console.log("🔍 Found callback parameters in URL, processing...");
+    // Check for OAuth success (tokens from server-side callback)
+    const oauthSuccess = urlParams.get("oauth_success");
+    const accessToken = urlParams.get("access_token");
+    const refreshToken = urlParams.get("refresh_token");
+    const expiresIn = urlParams.get("expires_in");
+    const tokenType = urlParams.get("token_type");
+
+    // Check for OAuth errors
+    const oauthError = urlParams.get("oauth_error");
+    const errorDescription = urlParams.get("error_description");
+
+    if (oauthSuccess && accessToken && refreshToken) {
+      console.log("🔍 Found OAuth success tokens in URL, processing...");
       setAuthStep("processing");
       setLoading(true);
 
       try {
-        // Call API route to exchange code for tokens
-        const response = await fetch("/api/oauth/exchange", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ code, state }),
-        });
-
-        const result = await response.json();
-
-        if (!result.success) {
-          throw new Error(result.message || "Token exchange failed");
-        }
-
-        // Convert API response to our token format
+        // Store tokens directly (already exchanged on server)
         const tokenData = {
-          access_token: result.data.accessToken,
-          refresh_token: result.data.refreshToken,
-          expires_in: result.data.expiresIn,
-          token_type: result.data.tokenType,
-          state: state,
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          expires_in: parseInt(expiresIn || "600", 10),
+          token_type: tokenType || "Bearer",
+          state: "callback", // Default state for server-side callbacks
         };
 
         setSpareBank1AuthFromTokens(tokenData);
 
-        console.log("✅ OAuth flow completed successfully!");
+        console.log(
+          "✅ OAuth flow completed successfully via server callback!"
+        );
 
         // Clean up URL parameters
         const newUrl =
@@ -100,14 +96,50 @@ export function SpareBank1OAuthSetup({
 
         checkAuthStatus();
       } catch (error) {
-        console.error("Failed to exchange code for tokens:", error);
+        console.error("Failed to store OAuth tokens:", error);
         setError(
-          error instanceof Error ? error.message : "Failed to process callback"
+          error instanceof Error
+            ? error.message
+            : "Failed to store authentication tokens"
         );
         setAuthStep("start");
       } finally {
         setLoading(false);
       }
+    } else if (oauthError) {
+      console.error("❌ OAuth error received:", {
+        error: oauthError,
+        description: errorDescription,
+      });
+
+      setError(
+        errorDescription || `OAuth authentication failed: ${oauthError}`
+      );
+      setAuthStep("start");
+
+      // Clean up URL parameters
+      const newUrl =
+        window.location.protocol +
+        "//" +
+        window.location.host +
+        window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+
+    // Legacy support: Check for code/state (direct callback, not via server)
+    const code = urlParams.get("code");
+    const state = urlParams.get("state");
+
+    if (code && state && !oauthSuccess && !oauthError) {
+      console.log(
+        "🔍 Found legacy callback parameters, redirecting to server callback..."
+      );
+
+      // Redirect to server-side callback to handle the exchange
+      const callbackUrl = `/api/oauth/callback?code=${encodeURIComponent(
+        code
+      )}&state=${encodeURIComponent(state)}`;
+      window.location.href = callbackUrl;
     }
   };
 
