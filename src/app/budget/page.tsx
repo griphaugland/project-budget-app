@@ -3,17 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { getValidAccessTokenSync } from "@/lib/auth-simple";
-
-interface BankAccount {
-  accountKey: string;
-  name: string;
-  type: string;
-  balance: {
-    amount: number;
-    currency: string;
-  };
-  isDefault: boolean;
-}
+import { Account } from "@/types/sparebank1";
 
 interface TransactionTestResult {
   success: boolean;
@@ -55,7 +45,7 @@ interface TransactionSyncResult {
 }
 
 export default function BudgetDashboard() {
-  const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [transactionTest, setTransactionTest] =
     useState<TransactionTestResult | null>(null);
@@ -147,10 +137,7 @@ export default function BudgetDashboard() {
   };
 
   const getTotalBalance = () => {
-    return accounts.reduce(
-      (total, account) => total + account.balance.amount,
-      0
-    );
+    return accounts.reduce((total, account) => total + account.balance, 0);
   };
 
   return (
@@ -217,8 +204,8 @@ export default function BudgetDashboard() {
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-gray-900">
-                        {account.balance.amount.toLocaleString()}{" "}
-                        {account.balance.currency}
+                        {account.balance.toLocaleString()}{" "}
+                        {account.currencyCode}
                       </p>
                       {account.isDefault && (
                         <p className="text-xs text-blue-600">Default Account</p>

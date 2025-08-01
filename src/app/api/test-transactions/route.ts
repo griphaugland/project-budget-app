@@ -21,7 +21,36 @@ export async function POST(request: NextRequest) {
 
     const client = getSpareBank1ClientFromToken(accessToken);
 
-    // Test 1: Get basic transactions - USE HISTORICAL DATES
+    // First, get accounts to extract account keys (required for transaction calls)
+    console.log("🔄 Getting accounts for transaction context...");
+    let accounts: Account[] = [];
+    let accountError = null;
+
+    try {
+      accounts = await client.getAccounts();
+      console.log(
+        `✅ Fetched ${accounts.length} accounts for transaction testing`
+      );
+    } catch (error) {
+      console.error("❌ Account fetch failed:", error);
+      accountError = error instanceof Error ? error.message : "Unknown error";
+    }
+
+    // Filter to target accounts for focused testing
+    const targetAccountNumbers = ["32092736910", "32042120676"];
+    const testAccounts = accounts.filter((acc) =>
+      targetAccountNumbers.includes(acc.accountNumber)
+    );
+
+    console.log(
+      `🎯 Found ${testAccounts.length} target accounts for testing:`,
+      testAccounts.map((acc) => ({
+        name: acc.name,
+        accountNumber: acc.accountNumber,
+      }))
+    );
+
+    // Test 1: Get basic transactions - USE HISTORICAL DATES + ACCOUNT KEYS
     console.log("🔄 Testing basic transaction fetch...");
     // Using historical dates from 2024 where real transaction data would exist
     const fromDate = "2024-11-01";
@@ -36,18 +65,31 @@ export async function POST(request: NextRequest) {
     let transactions: Transaction[] = [];
     let transactionError = null;
 
-    try {
-      transactions = await client.getTransactions({
-        fromDate,
-        toDate,
-        page: 0,
-        size: 10, // Limit to 10 for testing
-      });
-      console.log("✅ Transactions fetched successfully!");
-    } catch (error) {
-      console.error("❌ Transaction fetch failed:", error);
-      transactionError =
-        error instanceof Error ? error.message : "Unknown error";
+    if (testAccounts.length > 0) {
+      const accountKeys = testAccounts.map((acc) => acc.accountKey);
+      console.log("🔑 Using account keys:", accountKeys);
+
+      try {
+        transactions = await client.getTransactions({
+          accountKey: accountKeys, // REQUIRED parameter according to API spec
+          fromDate,
+          toDate,
+          rowLimit: 10, // Limit to 10 for testing
+          source: "ALL", // Get all transactions
+          enrichWithPaymentDetails: true,
+          enrichWithMerchantLogo: true,
+        });
+        console.log("✅ Transactions fetched successfully!");
+      } catch (error) {
+        console.error("❌ Transaction fetch failed:", error);
+        transactionError =
+          error instanceof Error ? error.message : "Unknown error";
+      }
+    } else {
+      transactionError = "No target accounts found for transaction testing";
+      console.log(
+        "⚠️ Skipping transaction test - no target accounts available"
+      );
     }
 
     // Test 2: Get classified transactions (may have category info)
@@ -55,28 +97,34 @@ export async function POST(request: NextRequest) {
     let classifiedTransactions: Transaction[] = [];
     let classifiedError = null;
 
-    try {
-      classifiedTransactions = await client.getClassifiedTransactions({
-        fromDate,
-        toDate,
-        page: 0,
-        size: 5, // Limit to 5 for testing
-      });
-      console.log("✅ Classified transactions fetched successfully!");
-    } catch (error) {
-      console.error("❌ Classified transaction fetch failed:", error);
+    if (testAccounts.length > 0) {
+      const accountKeys = testAccounts.map((acc) => acc.accountKey);
+
+      try {
+        classifiedTransactions = await client.getClassifiedTransactions({
+          accountKey: accountKeys, // REQUIRED parameter according to API spec
+          fromDate,
+          toDate,
+          rowLimit: 5, // Limit to 5 for testing
+          source: "ALL", // Get all transactions
+          enrichWithPaymentDetails: true,
+          enrichWithMerchantLogo: true,
+        });
+        console.log("✅ Classified transactions fetched successfully!");
+      } catch (error) {
+        console.error("❌ Classified transaction fetch failed:", error);
+        classifiedError =
+          error instanceof Error ? error.message : "Unknown error";
+      }
+    } else {
       classifiedError =
-        error instanceof Error ? error.message : "Unknown error";
+        "No target accounts found for classified transaction testing";
+      console.log(
+        "⚠️ Skipping classified transaction test - no target accounts available"
+      );
     }
 
-    // Test 3: Get accounts for context
-    console.log("🔄 Getting accounts for transaction context...");
-    let accounts: Account[] = [];
-    try {
-      accounts = await client.getAccounts();
-    } catch (error) {
-      console.error("❌ Account fetch failed:", error);
-    }
+    // Test 3: Summary of results
 
     return NextResponse.json({
       success: true,
@@ -106,8 +154,14 @@ export async function POST(request: NextRequest) {
               : [],
         },
         accounts: {
+          success: !accountError,
+          error: accountError,
           count: accounts?.length || 0,
-          accountKeys: accounts?.map((acc) => acc.accountKey) || [],
+          totalFetched: accounts?.length || 0,
+          targetAccountsFound: testAccounts?.length || 0,
+          targetAccountNumbers,
+          accountKeys: testAccounts?.map((acc) => acc.accountKey) || [],
+          accountNames: testAccounts?.map((acc) => acc.name) || [],
         },
         dataInsights: {
           recommendedFields: [

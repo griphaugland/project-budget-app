@@ -33,15 +33,15 @@ export async function POST(request: NextRequest) {
     // Transform accounts data (balance is already included in the response)
     const accountsWithBalances = accounts.map((account) => {
       console.log(
-        `✅ Account processed: ${account.name} - Balance: ${account.balance.amount} ${account.balance.currency}`
+        `✅ Account processed: ${account.name} - Balance: ${account.balance} ${account.currencyCode}`
       );
 
       return {
         accountKey: account.accountKey,
         accountName: account.name,
         accountType: account.type,
-        balance: account.balance.amount,
-        currency: account.balance.currency,
+        balance: account.balance,
+        currency: account.currencyCode,
         isDefault: account.isDefault || false,
         // Add some metadata for tracking
         lastSynced: new Date().toISOString(),

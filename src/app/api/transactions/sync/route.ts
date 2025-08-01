@@ -127,11 +127,29 @@ export async function POST(request: NextRequest) {
     // Filter to specific accounts for testing
     const targetAccountNumbers = ["32092736910", "32042120676"]; // Focus on these 2 accounts for debugging
 
+    console.log(
+      "🔍 DEBUG: All fetched accounts for filtering:",
+      spareBank1Accounts.map((acc) => ({
+        accountKey: acc.accountKey,
+        accountNumber: acc.accountNumber,
+        name: acc.name,
+        accountNumberType: typeof acc.accountNumber,
+      }))
+    );
+
+    console.log("🔍 DEBUG: Target account numbers:", targetAccountNumbers);
+
     const accountsToSync = accountKey
       ? spareBank1Accounts.filter((acc) => acc.accountKey === accountKey)
-      : spareBank1Accounts.filter((acc) =>
-          targetAccountNumbers.includes(acc.accountNumber)
-        );
+      : spareBank1Accounts.filter((acc) => {
+          const matches = targetAccountNumbers.includes(acc.accountNumber);
+          console.log(
+            `🔍 DEBUG: Account ${
+              acc.accountNumber
+            } (${typeof acc.accountNumber}) matches: ${matches}`
+          );
+          return matches;
+        });
 
     console.log(
       `🎯 Filtered to ${accountsToSync.length} target accounts:`,
@@ -165,11 +183,13 @@ export async function POST(request: NextRequest) {
         let transactions;
         try {
           transactions = await spareBank1Client.getTransactions({
+            accountKey: [account.accountKey], // Use array format as per API spec
             fromDate,
             toDate,
-            accountKey: account.accountKey,
-            page: 0,
-            size: 100, // Fetch up to 100 transactions
+            rowLimit: 100, // Use rowLimit instead of size
+            source: "ALL", // Get all transactions (recent + historic)
+            enrichWithPaymentDetails: true, // Get detailed payment info
+            enrichWithMerchantLogo: true, // Get merchant logos and cleaned names
           });
         } catch (transactionError) {
           console.error(

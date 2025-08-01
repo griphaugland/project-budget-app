@@ -29,6 +29,17 @@ interface RawSpareBank1Account {
   accountProperties: Record<string, unknown>;
 }
 
+// SpareBank1 API query parameters interface
+interface TransactionQueryParams {
+  accountKey?: string[];
+  fromDate?: string;
+  toDate?: string;
+  rowLimit?: number;
+  source?: string;
+  enrichWithPaymentDetails?: boolean;
+  enrichWithMerchantLogo?: boolean;
+}
+
 export class SpareBank1SimpleClient {
   private client: AxiosInstance;
   private accessToken: string;
@@ -177,15 +188,24 @@ export class SpareBank1SimpleClient {
           );
           return response.data.accounts.map((account: unknown) => ({
             accountKey: (account as RawSpareBank1Account).key,
+            accountNumber: (account as RawSpareBank1Account).accountNumber,
+            iban: (account as RawSpareBank1Account).iban,
             name: (account as RawSpareBank1Account).name,
-            type:
-              (account as RawSpareBank1Account).type ||
-              (account as RawSpareBank1Account).description,
-            balance: {
-              amount: (account as RawSpareBank1Account).balance || 0,
-              currency: (account as RawSpareBank1Account).currencyCode || "NOK",
-            },
+            description: (account as RawSpareBank1Account).description,
+            balance: (account as RawSpareBank1Account).balance || 0,
+            availableBalance:
+              (account as RawSpareBank1Account).availableBalance || 0,
+            currencyCode:
+              (account as RawSpareBank1Account).currencyCode || "NOK",
+            type: (account as RawSpareBank1Account).type,
+            productType: (account as RawSpareBank1Account).productType,
+            productId: (account as RawSpareBank1Account).productId,
+            descriptionCode: (account as RawSpareBank1Account).descriptionCode,
+            disposalRole: (account as RawSpareBank1Account).disposalRole,
             isDefault: (account as RawSpareBank1Account).isDefault || false,
+            owner: (account as RawSpareBank1Account).owner,
+            accountProperties: (account as RawSpareBank1Account)
+              .accountProperties,
           }));
         } else {
           console.warn("⚠️ Unexpected response structure:", response.data);
@@ -219,13 +239,21 @@ export class SpareBank1SimpleClient {
           return response.data.accounts.map(
             (account: RawSpareBank1Account) => ({
               accountKey: account.key,
+              accountNumber: account.accountNumber,
+              iban: account.iban,
               name: account.name,
-              type: account.type || account.description,
-              balance: {
-                amount: account.balance || 0,
-                currency: account.currencyCode || "NOK",
-              },
+              description: account.description,
+              balance: account.balance || 0,
+              availableBalance: account.availableBalance || 0,
+              currencyCode: account.currencyCode || "NOK",
+              type: account.type,
+              productType: account.productType,
+              productId: account.productId,
+              descriptionCode: account.descriptionCode,
+              disposalRole: account.disposalRole,
               isDefault: account.isDefault || false,
+              owner: account.owner,
+              accountProperties: account.accountProperties,
             })
           );
         }
@@ -314,19 +342,44 @@ export class SpareBank1SimpleClient {
 
   // Transaction Methods
   async getTransactions(params?: {
-    fromDate?: string;
-    toDate?: string;
-    accountKey?: string;
-    page?: number;
-    size?: number;
+    accountKey?: string | string[]; // Can be single account or array of accounts
+    fromDate?: string; // yyyy-MM-dd format
+    toDate?: string; // yyyy-MM-dd format
+    rowLimit?: number; // Maximum number of transactions
+    source?: "RECENT" | "HISTORIC" | "ALL"; // Transaction source
+    enrichWithPaymentDetails?: boolean;
+    enrichWithMerchantLogo?: boolean;
   }): Promise<Transaction[]> {
     console.log("🔄 Making getTransactions API call with params:", params);
 
+    // Prepare query parameters according to SpareBank1 API spec
+    const queryParams: TransactionQueryParams = {};
+
+    if (params?.accountKey) {
+      // Handle both single account and array of accounts
+      queryParams.accountKey = Array.isArray(params.accountKey)
+        ? params.accountKey
+        : [params.accountKey];
+    }
+
+    if (params?.fromDate) queryParams.fromDate = params.fromDate;
+    if (params?.toDate) queryParams.toDate = params.toDate;
+    if (params?.rowLimit) queryParams.rowLimit = params.rowLimit;
+    if (params?.source) queryParams.source = params.source;
+    if (params?.enrichWithPaymentDetails)
+      queryParams.enrichWithPaymentDetails = params.enrichWithPaymentDetails;
+    if (params?.enrichWithMerchantLogo)
+      queryParams.enrichWithMerchantLogo = params.enrichWithMerchantLogo;
+
     try {
       const response = await this.client.get("/transactions", {
-        params,
+        params: queryParams,
         headers: {
-          Accept: "application/json",
+          Accept: "application/vnd.sparebank1.v1+json; charset=utf-8",
+          "Content-Type": "application/vnd.sparebank1.v1+json; charset=utf-8",
+        },
+        paramsSerializer: {
+          indexes: null, // This changes accountKey[] to accountKey format
         },
       });
 
@@ -335,33 +388,65 @@ export class SpareBank1SimpleClient {
         JSON.stringify(response.data, null, 2)
       );
 
-      // Handle different response structures
-      if (response.data && Array.isArray(response.data)) {
-        return response.data;
+      // Handle SpareBank1 API response structure: array of objects with transactions property
+      if (Array.isArray(response.data)) {
+        // Flatten all transactions from all accounts
+        const allTransactions = response.data.reduce((acc, accountData) => {
+          if (
+            accountData.transactions &&
+            Array.isArray(accountData.transactions)
+          ) {
+            return acc.concat(accountData.transactions);
+          }
+          return acc;
+        }, []);
+        console.log(
+          `📦 Processed ${allTransactions.length} transactions from ${response.data.length} account(s)`
+        );
+        return allTransactions;
       } else if (
         response.data &&
         response.data.transactions &&
         Array.isArray(response.data.transactions)
       ) {
         return response.data.transactions;
-      } else if (
-        response.data &&
-        response.data.data &&
-        Array.isArray(response.data.data)
-      ) {
-        return response.data.data;
       }
 
-      return response.data || [];
+      return [];
     } catch (error) {
-      console.error("getTransactions failed, trying alternative headers...");
+      console.error("❌ getTransactions failed:", error);
 
-      // Try with different Accept header (same pattern as accounts)
+      // Log the actual API error details
+      if (error instanceof Error && "response" in error) {
+        const axiosError = error as {
+          response?: {
+            status?: number;
+            statusText?: string;
+            data?: unknown;
+            headers?: unknown;
+          };
+        };
+        console.error("🔍 API Error Details:", {
+          status: axiosError.response?.status,
+          statusText: axiosError.response?.statusText,
+          data: JSON.stringify(axiosError.response?.data, null, 2),
+          rateLimitRemaining: (
+            axiosError.response?.headers as Record<string, string>
+          )?.["x-ratelimit-remaining"],
+        });
+      }
+
+      console.error("🔄 Trying alternative headers...");
+
+      // Try with standard JSON header as fallback
       try {
         const response = await this.client.get("/transactions", {
-          params,
+          params: queryParams,
           headers: {
-            Accept: "*/*",
+            Accept: "application/json",
+          },
+          paramsSerializer: {
+            indexes: null, // This changes accountKey[] to accountKey format
           },
         });
 
@@ -370,58 +455,287 @@ export class SpareBank1SimpleClient {
           JSON.stringify(response.data, null, 2)
         );
 
-        // Handle different response structures for fallback
-        if (response.data && Array.isArray(response.data)) {
-          return response.data;
+        // Handle SpareBank1 API response structure for fallback
+        if (Array.isArray(response.data)) {
+          const allTransactions = response.data.reduce((acc, accountData) => {
+            if (
+              accountData.transactions &&
+              Array.isArray(accountData.transactions)
+            ) {
+              return acc.concat(accountData.transactions);
+            }
+            return acc;
+          }, []);
+          console.log(
+            `📦 Fallback: Processed ${allTransactions.length} transactions from ${response.data.length} account(s)`
+          );
+          return allTransactions;
         } else if (
           response.data &&
           response.data.transactions &&
           Array.isArray(response.data.transactions)
         ) {
           return response.data.transactions;
-        } else if (
-          response.data &&
-          response.data.data &&
-          Array.isArray(response.data.data)
-        ) {
-          return response.data.data;
         }
 
-        return response.data || [];
+        return [];
       } catch (fallbackError) {
-        console.error(
-          "getTransactions failed with alternative headers too:",
-          fallbackError
-        );
+        console.error("❌ getTransactions fallback failed:", fallbackError);
+
+        // Log the actual fallback API error details
+        if (fallbackError instanceof Error && "response" in fallbackError) {
+          const axiosError = fallbackError as {
+            response?: {
+              status?: number;
+              statusText?: string;
+              data?: unknown;
+              headers?: unknown;
+            };
+          };
+          console.error("🔍 Fallback API Error Details:", {
+            status: axiosError.response?.status,
+            statusText: axiosError.response?.statusText,
+            data: JSON.stringify(axiosError.response?.data, null, 2),
+            rateLimitRemaining: (
+              axiosError.response?.headers as Record<string, string>
+            )?.["x-ratelimit-remaining"],
+          });
+        }
+
         throw error; // Throw the original error
       }
     }
   }
 
   async getClassifiedTransactions(params?: {
-    fromDate?: string;
-    toDate?: string;
-    accountKey?: string;
-    page?: number;
-    size?: number;
+    accountKey?: string | string[]; // Can be single account or array of accounts
+    fromDate?: string; // yyyy-MM-dd format
+    toDate?: string; // yyyy-MM-dd format
+    rowLimit?: number; // Maximum number of transactions
+    source?: "RECENT" | "HISTORIC" | "ALL"; // Transaction source
+    enrichWithPaymentDetails?: boolean;
+    enrichWithMerchantLogo?: boolean;
   }): Promise<ClassifiedTransaction[]> {
     console.log(
       "🔄 Making getClassifiedTransactions API call with params:",
       params
     );
 
-    const response = await this.client.get("/transactions/classified", {
-      params,
-      headers: {
-        Accept: "application/json",
-      },
-    });
+    // Prepare query parameters according to SpareBank1 API spec
+    const queryParams: TransactionQueryParams = {};
 
-    console.log(
-      "📦 Raw SpareBank1 getClassifiedTransactions response:",
-      JSON.stringify(response.data, null, 2)
-    );
-    return response.data;
+    if (params?.accountKey) {
+      queryParams.accountKey = Array.isArray(params.accountKey)
+        ? params.accountKey
+        : [params.accountKey];
+    }
+
+    if (params?.fromDate) queryParams.fromDate = params.fromDate;
+    if (params?.toDate) queryParams.toDate = params.toDate;
+    if (params?.rowLimit) queryParams.rowLimit = params.rowLimit;
+    if (params?.source) queryParams.source = params.source;
+    if (params?.enrichWithPaymentDetails)
+      queryParams.enrichWithPaymentDetails = params.enrichWithPaymentDetails;
+    if (params?.enrichWithMerchantLogo)
+      queryParams.enrichWithMerchantLogo = params.enrichWithMerchantLogo;
+
+    try {
+      const response = await this.client.get("/transactions/classified", {
+        params: queryParams,
+        headers: {
+          Accept: "application/vnd.sparebank1.v1+json; charset=utf-8",
+        },
+        paramsSerializer: {
+          indexes: null, // This changes accountKey[] to accountKey format
+        },
+      });
+
+      console.log(
+        "📦 Raw SpareBank1 getClassifiedTransactions response:",
+        JSON.stringify(response.data, null, 2)
+      );
+
+      // Handle SpareBank1 API response structure
+      if (Array.isArray(response.data)) {
+        const allTransactions = response.data.reduce((acc, accountData) => {
+          if (
+            accountData.transactions &&
+            Array.isArray(accountData.transactions)
+          ) {
+            return acc.concat(accountData.transactions);
+          }
+          return acc;
+        }, []);
+        return allTransactions;
+      }
+
+      // Handle single object response with transactions array
+      if (
+        response.data &&
+        response.data.transactions &&
+        Array.isArray(response.data.transactions)
+      ) {
+        return response.data.transactions;
+      }
+
+      return response.data || [];
+    } catch (error) {
+      console.error("❌ getClassifiedTransactions failed:", error);
+
+      // Log the actual API error details
+      if (error instanceof Error && "response" in error) {
+        const axiosError = error as {
+          response?: {
+            status?: number;
+            statusText?: string;
+            data?: unknown;
+            headers?: unknown;
+          };
+        };
+        console.error("🔍 Classified API Error Details:", {
+          status: axiosError.response?.status,
+          statusText: axiosError.response?.statusText,
+          data: JSON.stringify(axiosError.response?.data, null, 2),
+          rateLimitRemaining: (
+            axiosError.response?.headers as Record<string, string>
+          )?.["x-ratelimit-remaining"],
+        });
+      }
+
+      console.error("🔄 Trying alternative headers...");
+
+      try {
+        const response = await this.client.get("/transactions/classified", {
+          params: queryParams,
+          headers: {
+            Accept: "application/json",
+          },
+          paramsSerializer: {
+            indexes: null, // This changes accountKey[] to accountKey format
+          },
+        });
+
+        console.log(
+          "📦 Alternative headers getClassifiedTransactions response:",
+          JSON.stringify(response.data, null, 2)
+        );
+
+        if (Array.isArray(response.data)) {
+          const allTransactions = response.data.reduce((acc, accountData) => {
+            if (
+              accountData.transactions &&
+              Array.isArray(accountData.transactions)
+            ) {
+              return acc.concat(accountData.transactions);
+            }
+            return acc;
+          }, []);
+          return allTransactions;
+        }
+
+        // Handle single object response with transactions array
+        if (
+          response.data &&
+          response.data.transactions &&
+          Array.isArray(response.data.transactions)
+        ) {
+          return response.data.transactions;
+        }
+
+        return response.data || [];
+      } catch (fallbackError) {
+        console.error(
+          "❌ getClassifiedTransactions fallback failed:",
+          fallbackError
+        );
+
+        // Log the actual fallback API error details
+        if (fallbackError instanceof Error && "response" in fallbackError) {
+          const axiosError = fallbackError as {
+            response?: {
+              status?: number;
+              statusText?: string;
+              data?: unknown;
+              headers?: unknown;
+            };
+          };
+          console.error("🔍 Classified Fallback API Error Details:", {
+            status: axiosError.response?.status,
+            statusText: axiosError.response?.statusText,
+            data: JSON.stringify(axiosError.response?.data, null, 2),
+            rateLimitRemaining: (
+              axiosError.response?.headers as Record<string, string>
+            )?.["x-ratelimit-remaining"],
+          });
+        }
+
+        throw error;
+      }
+    }
+  }
+
+  async getTransactionExport(params?: {
+    accountKey?: string | string[]; // Can be single account or array of accounts
+    fromDate?: string; // yyyy-MM-dd format
+    toDate?: string; // yyyy-MM-dd format
+    rowLimit?: number; // Maximum number of transactions
+    source?: "RECENT" | "HISTORIC" | "ALL"; // Transaction source
+    enrichWithPaymentDetails?: boolean;
+  }): Promise<string> {
+    console.log("🔄 Making getTransactionExport API call with params:", params);
+
+    // Prepare query parameters according to SpareBank1 API spec
+    const queryParams: TransactionQueryParams = {};
+
+    if (params?.accountKey) {
+      queryParams.accountKey = Array.isArray(params.accountKey)
+        ? params.accountKey
+        : [params.accountKey];
+    }
+
+    if (params?.fromDate) queryParams.fromDate = params.fromDate;
+    if (params?.toDate) queryParams.toDate = params.toDate;
+    if (params?.rowLimit) queryParams.rowLimit = params.rowLimit;
+    if (params?.source) queryParams.source = params.source;
+    if (params?.enrichWithPaymentDetails)
+      queryParams.enrichWithPaymentDetails = params.enrichWithPaymentDetails;
+
+    try {
+      const response = await this.client.get("/transactions/export", {
+        params: queryParams,
+        headers: {
+          Accept: "text/csv",
+        },
+      });
+
+      console.log(
+        "📦 Raw SpareBank1 getTransactionExport response (CSV):",
+        response.data
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error(
+        "getTransactionExport failed, trying alternative headers..."
+      );
+
+      try {
+        const response = await this.client.get("/transactions/export", {
+          params: queryParams,
+          headers: {
+            Accept: "*/*",
+          },
+        });
+
+        return response.data;
+      } catch (fallbackError) {
+        console.error(
+          "getTransactionExport failed with alternative headers too:",
+          fallbackError
+        );
+        throw error;
+      }
+    }
   }
 
   async getTransactionDetails(
