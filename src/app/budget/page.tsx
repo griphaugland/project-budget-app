@@ -11,13 +11,13 @@ interface TransactionTestResult {
     transactions: {
       success: boolean;
       count: number;
-      sample: any[];
+      sample: unknown[];
       structure: string[];
     };
     classifiedTransactions: {
       success: boolean;
       count: number;
-      sample: any[];
+      sample: unknown[];
       structure: string[];
     };
   };
@@ -344,15 +344,16 @@ export default function BudgetDashboard() {
                       <p className="text-sm text-gray-600">
                         Count: {transactionTest.data?.transactions.count || 0}
                       </p>
-                      {transactionTest.data?.transactions.structure.length >
-                        0 && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          Fields:{" "}
-                          {transactionTest.data.transactions.structure.join(
-                            ", "
-                          )}
-                        </p>
-                      )}
+                      {transactionTest?.data?.transactions.structure &&
+                        transactionTest?.data?.transactions.structure?.length >
+                          0 && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Fields:{" "}
+                            {transactionTest?.data?.transactions.structure?.join(
+                              ", "
+                            )}
+                          </p>
+                        )}
                     </div>
 
                     <div className="bg-white p-3 rounded border">
@@ -370,32 +371,35 @@ export default function BudgetDashboard() {
                         {transactionTest.data?.classifiedTransactions.count ||
                           0}
                       </p>
-                      {transactionTest.data?.classifiedTransactions.structure
-                        .length > 0 && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          Fields:{" "}
-                          {transactionTest.data.classifiedTransactions.structure.join(
-                            ", "
-                          )}
-                        </p>
-                      )}
+                      {transactionTest?.data?.classifiedTransactions
+                        .structure &&
+                        transactionTest?.data?.classifiedTransactions.structure
+                          ?.length > 0 && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Fields:{" "}
+                            {transactionTest?.data?.classifiedTransactions.structure?.join(
+                              ", "
+                            )}
+                          </p>
+                        )}
                     </div>
                   </div>
 
-                  {transactionTest.data?.transactions.sample.length > 0 && (
-                    <div className="bg-white p-3 rounded border">
-                      <h5 className="font-medium text-gray-800 mb-2">
-                        Sample Transaction Data
-                      </h5>
-                      <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto">
-                        {JSON.stringify(
-                          transactionTest.data.transactions.sample[0],
-                          null,
-                          2
-                        )}
-                      </pre>
-                    </div>
-                  )}
+                  {transactionTest?.data?.transactions.sample &&
+                    transactionTest?.data?.transactions.sample?.length > 0 && (
+                      <div className="bg-white p-3 rounded border">
+                        <h5 className="font-medium text-gray-800 mb-2">
+                          Sample Transaction Data
+                        </h5>
+                        <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto">
+                          {JSON.stringify(
+                            transactionTest?.data?.transactions.sample?.[0],
+                            null,
+                            2
+                          )}
+                        </pre>
+                      </div>
+                    )}
                 </div>
               ) : (
                 <div className="text-red-600">

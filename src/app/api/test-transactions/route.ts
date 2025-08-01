@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSpareBank1ClientFromToken } from "@/lib/sparebank1-simple";
-import { Transaction, Account } from "@/types/sparebank1";
+import {
+  Transaction,
+  Account,
+  ClassifiedTransaction,
+} from "@/types/sparebank1";
 
 export async function POST(request: NextRequest) {
   try {
@@ -94,7 +98,7 @@ export async function POST(request: NextRequest) {
 
     // Test 2: Get classified transactions (may have category info)
     console.log("🔄 Testing classified transaction fetch...");
-    let classifiedTransactions: Transaction[] = [];
+    let classifiedTransactions: ClassifiedTransaction[] = [];
     let classifiedError = null;
 
     if (testAccounts.length > 0) {
