@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model bank_accounts {
+  id                         String         @id
+  user_id                    String
+  account_key                String         @unique
+  account_number             String
+  iban                       String
+  name                       String
+  description                String
+  balance                    Decimal        @db.Decimal(12, 2)
+  available_balance          Decimal        @db.Decimal(12, 2)
+  currency_code              String         @default("NOK")
+  product_type               String
+  account_type               String
+  product_id                 String
+  description_code           String
+  disposal_role              Boolean        @default(false)
+  is_transfer_from_enabled   Boolean        @default(true)
+  is_transfer_to_enabled     Boolean        @default(true)
+  is_payment_from_enabled    Boolean        @default(true)
+  is_default_payment_account Boolean        @default(false)
+  is_savings_account         Boolean        @default(false)
+  is_owned                   Boolean        @default(true)
+  is_blocked                 Boolean        @default(false)
+  is_hidden                  Boolean        @default(false)
+  created_at                 DateTime       @default(now())
+  updated_at                 DateTime
+  last_synced_at             DateTime       @default(now())
+  users                      users          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  transactions               transactions[]
+}
+
+model budgets {
+  id              String     @id
+  user_id         String
+  category_id     String
+  name            String
+  amount          Decimal    @db.Decimal(12, 2)
+  currency        String     @default("NOK")
+  period          String
+  start_date      DateTime
+  end_date        DateTime?
+  is_recurring    Boolean    @default(true)
+  alert_threshold Int        @default(80)
+  is_active       Boolean    @default(true)
+  current_spent   Decimal    @default(0) @db.Decimal(12, 2)
+  last_calculated DateTime?
+  description     String?
+  color           String?
+  created_at      DateTime   @default(now())
+  updated_at      DateTime
+  categories      categories @relation(fields: [category_id], references: [id], onDelete: Cascade)
+  users           users      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model categories {
+  id           String         @id
+  user_id      String
+  name         String
+  color        String
+  icon         String?
+  description  String?
+  is_income    Boolean        @default(false)
+  sort_order   Int            @default(0)
+  is_active    Boolean        @default(true)
+  created_at   DateTime       @default(now())
+  updated_at   DateTime
+  budgets      budgets[]
+  users        users          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  transactions transactions[]
+
+  @@unique([user_id, name])
+}
+
+model transactions {
+  id                    String        @id
+  userId                String        @map("user_id")
+  accountId             String        @map("account_id")
+  sparebank1_id         String?
+  amount                Decimal       @db.Decimal(12, 2)
+  currency              String        @default("NOK")
+  description           String
+  merchant_name         String?
+  transactionDate       DateTime      @map("transaction_date")
+  category_id           String?
+  is_income             Boolean       @default(false)
+  is_recurring          Boolean       @default(false)
+  isManual              Boolean       @default(false) @map("is_manual")
+  sparebank1_type       String?
+  sparebank1_code       String?
+  sparebank1_reference  String?
+  userNotes             String?
+  tags                  String[]      @default([])
+  created_at            DateTime      @default(now())
+  updated_at            DateTime
+  synced_at             DateTime?
+  booking_status        String?
+  cleaned_description   String?
+  is_confidential       Boolean       @default(false)
+  kid_or_message        String?
+  non_unique_id         String?
+  remote_account_name   String?
+  remote_account_number String?
+  type_code             String?
+  bank_accounts         bank_accounts @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categories            categories?   @relation(fields: [category_id], references: [id])
+  users                 users         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([non_unique_id, accountId])
+  @@unique([sparebank1_id, accountId, transactionDate])
+}
+
+model users {
+  id                      String          @id
+  name                    String?
+  email                   String?         @unique
+  created_at              DateTime        @default(now())
+  updated_at              DateTime
+  sparebank1_customer_key String?         @unique
+  bank_accounts           bank_accounts[]
+  budgets                 budgets[]
+  categories              categories[]
+  transactions            transactions[]
+}

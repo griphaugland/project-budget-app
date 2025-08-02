@@ -1,7 +1,7 @@
 // SpareBank1 API Response Types
 
 export interface Account {
-  accountKey: string;
+  key: string; // SpareBank1 API uses "key", not "accountKey"
   accountNumber: string;
   iban: string;
   name: string;
@@ -14,7 +14,6 @@ export interface Account {
   productId: string;
   descriptionCode: string;
   disposalRole: boolean;
-  isDefault?: boolean;
   owner: {
     name: string;
     firstName: string;
