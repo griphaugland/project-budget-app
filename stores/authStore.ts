@@ -1,32 +1,36 @@
 import { create } from 'zustand';
 import { User, NotificationPreferences } from '@/types/database';
-import { TEST_USER } from '@/data/testData';
+import { saveData, loadData, KEYS } from '@/lib/storage';
 
 interface AuthStore {
-  // State
   user: User | null;
   isAuthenticated: boolean;
   isOnboarded: boolean;
   isLoading: boolean;
 
-  // Notification preferences
   notificationPreferences: NotificationPreferences;
 
   // Actions
   setUser: (user: User | null) => void;
   setOnboarded: (value: boolean) => void;
+  loadOnboardingState: () => Promise<void>;
   updateNotificationPreferences: (prefs: Partial<NotificationPreferences>) => void;
   signOut: () => void;
-
-  // For dev/testing
-  loginWithTestUser: () => void;
 }
 
+const LOCAL_USER: User = {
+  id: 'local-user',
+  email: '',
+  push_token: null,
+  last_synced_at: null,
+  created_at: new Date().toISOString(),
+};
+
 export const useAuthStore = create<AuthStore>((set) => ({
-  user: TEST_USER, // Pre-loaded for development
+  user: LOCAL_USER,
   isAuthenticated: true,
-  isOnboarded: true,
-  isLoading: false,
+  isOnboarded: false,
+  isLoading: true,
 
   notificationPreferences: {
     morning_briefing: true,
@@ -37,15 +41,21 @@ export const useAuthStore = create<AuthStore>((set) => ({
   },
 
   setUser: (user) => set({ user, isAuthenticated: !!user }),
-  setOnboarded: (value) => set({ isOnboarded: value }),
+
+  setOnboarded: (value) => {
+    set({ isOnboarded: value });
+    saveData(KEYS.ONBOARDED, value);
+  },
+
+  loadOnboardingState: async () => {
+    const onboarded = await loadData<boolean>(KEYS.ONBOARDED);
+    set({ isOnboarded: onboarded ?? false, isLoading: false });
+  },
 
   updateNotificationPreferences: (prefs) =>
     set((state) => ({
       notificationPreferences: { ...state.notificationPreferences, ...prefs },
     })),
 
-  signOut: () => set({ user: null, isAuthenticated: false }),
-
-  loginWithTestUser: () =>
-    set({ user: TEST_USER, isAuthenticated: true, isOnboarded: true }),
+  signOut: () => set({ user: null, isAuthenticated: false, isOnboarded: false }),
 }));

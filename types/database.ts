@@ -41,6 +41,7 @@ export interface Transaction {
   is_recurring: boolean;
   ai_confidence: number;
   manually_edited: boolean;
+  expected_payment_id?: string | null;
   transaction_date: string;
   synced_at: string;
 }
@@ -48,7 +49,7 @@ export interface Transaction {
 export interface Budget {
   id: string;
   user_id: string;
-  month: string; // ISO date string, first day of month
+  month: string;
   total_income: number;
   total_fixed_costs: number;
 }
@@ -65,6 +66,21 @@ export interface MerchantMapping {
   user_id: string;
   merchant_pattern: string;
   category_id: string;
+  created_at: string;
+}
+
+export interface ExpectedPayment {
+  id: string;
+  user_id: string;
+  description: string;
+  amount: number;
+  category_id: string;
+  expected_date: string;
+  is_recurring: boolean;
+  status: 'pending' | 'fulfilled' | 'overdue' | 'cancelled';
+  actual_transaction_id: string | null;
+  reconciled_at: string | null;
+  created_by: 'user' | 'ai_assistant' | 'system';
   created_at: string;
 }
 
